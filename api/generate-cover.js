@@ -1,7 +1,5 @@
 // File: /api/generate-pages.js
 
-import { NextResponse } from 'next/server';
-
 export async function POST(req) {
   const { openaiApiKey, stabilityApiKey, storyInputs, characters, pageCount, coverPrompt } = await req.json();
 
@@ -38,7 +36,7 @@ export async function POST(req) {
 
     const parsedPages = JSON.parse(pages);
 
-    // STEP 2: Generate images for each page using Stability AI
+    // STEP 2: Generate images using Stability AI
     const stabilityResponses = await Promise.all(
       parsedPages.map(async (page) => {
         const response = await fetch("https://api.stability.ai/v1/generation/sdxl-1.0/text-to-image", {
@@ -49,11 +47,7 @@ export async function POST(req) {
             Authorization: `Bearer ${stabilityApiKey}`,
           },
           body: JSON.stringify({
-            text_prompts: [
-              {
-                text: page.prompt,
-              },
-            ],
+            text_prompts: [{ text: page.prompt }],
             cfg_scale: 7,
             height: 1024,
             width: 1024,
@@ -72,9 +66,16 @@ export async function POST(req) {
       })
     );
 
-    return NextResponse.json({ pages: stabilityResponses });
+    return new Response(JSON.stringify({ pages: stabilityResponses }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch (err) {
     console.error("Page generation error:", err);
-    return NextResponse.json({ error: "Page generation failed" }, { status: 500 });
+    return new Response(JSON.stringify({ error: "Page generation failed" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }
+
