@@ -1,10 +1,43 @@
+<!-- public/index.html -->
 <!DOCTYPE html>
-<html>
-  <head>
-    <title>Nimby Books</title>
-  </head>
-  <body>
-    <h1>Hello from Nimby Books</h1>
-    <p>The frontend is working!</p>
-  </body>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nimby Books - Create Your Story</title>
+  <script defer src="script.js"></script>
+</head>
+<body>
+  <h1>Create Your Storybook</h1>
+  <form id="storybookForm">
+    <label>Story Title: <input type="text" name="title" required /></label><br>
+    <label>Location: <input type="text" name="location" required /></label><br>
+    <label>What happens in the story:<br>
+      <textarea name="plot" required></textarea></label><br>
+    
+    <h3>Main Character</h3>
+    <label>Name: <input type="text" name="mainName" required /></label><br>
+    <label>Age: <input type="number" name="mainAge" required /></label><br>
+    <label>Hair Colour: <input type="text" name="mainHair" /></label><br>
+    <label>Eye Colour: <input type="text" name="mainEyes" /></label><br>
+    <label>Personality: <input type="text" name="mainPersonality" /></label><br>
+
+    <h3>Reading Level</h3>
+    <select name="readingLevel" required>
+      <option value="early">Early Reader (2-4)</option>
+      <option value="developing">Developing Reader (5-7)</option>
+      <option value="confident">Confident Reader (8-10)</option>
+      <option value="pagepro">Page Pro (11+)</option>
+    </select><br><br>
+
+    <button type="submit">Generate Cover</button>
+  </form>
+
+  <div id="result">
+    <h2>Preview</h2>
+    <img id="coverImage" src="" alt="Generated Cover" style="max-width: 210mm; max-height: 210mm; display:none;"/>
+    <p id="synopsis"></p>
+  </div>
+</body>
 </html>
+
