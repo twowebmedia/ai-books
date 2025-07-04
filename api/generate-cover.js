@@ -16,7 +16,7 @@ export default async function handler(req, res) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        version: "cb635407d376f3000c4783bffcfe20686e6f9cefa7d7f57d3c6486cda3ae99f1", // SDXL working version
+        version: "cb635407d376f3000c4783bffcfe20686e6f9cefa7d7f57d3c6486cda3ae99f1", // Stable Diffusion XL
         input: {
           prompt: prompt,
           width: 1024,
@@ -26,14 +26,16 @@ export default async function handler(req, res) {
     });
 
     const prediction = await startResponse.json();
-    console.log("Prediction:", prediction);
+    console.log("FULL REPLICATE RESPONSE:", prediction);
 
     if (!prediction?.urls?.get) {
-      console.error("Invalid Replicate response:", prediction);
-      return res.status(500).json({ error: "Invalid response from Replicate" });
+      return res.status(500).json({
+        error: "Invalid response from Replicate (no URLs)",
+        raw: prediction,
+      });
     }
 
-    // Poll for result
+    // Polling...
     for (let i = 0; i < 15; i++) {
       const poll = await fetch(prediction.urls.get, {
         headers: { Authorization: `Token ${token}` },
@@ -42,7 +44,6 @@ export default async function handler(req, res) {
       const result = await poll.json();
 
       if (result.status === "succeeded") {
-        console.log("Generated image:", result.output[0]);
         return res.status(200).json({ imageUrl: result.output[0] });
       }
 
@@ -55,7 +56,7 @@ export default async function handler(req, res) {
 
     return res.status(500).json({ error: "Timed out waiting for image" });
   } catch (err) {
-    console.error("Error in generation:", err);
-    return res.status(500).json({ error: "Internal server error" });
+    console.error("GENERATION ERROR:", err);
+    return res.status(500).json({ error: "Internal error", detail: err.message });
   }
 }
