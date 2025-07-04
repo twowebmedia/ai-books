@@ -1,62 +1,80 @@
-export default async function handler(req, res) {
-  const token = process.env.REPLICATE_API_TOKEN;
+// File: /api/generate-pages.js
 
-  if (!token) {
-    return res.status(500).json({ error: "Missing Replicate API token" });
-  }
+import { NextResponse } from 'next/server';
 
-  const prompt = "A square children’s book cover illustration of a smiling young Black boy at the entrance of a zoo. Behind him are cartoon-style animals like a lion, zebra, and giraffe behind a colourful fence. Title at the top: 'Dave Goes to the Zoo'. Soft colours, playful, 210mm x 210mm look.";
+export async function POST(req) {
+  const { openaiApiKey, stabilityApiKey, storyInputs, characters, pageCount, coverPrompt } = await req.json();
 
   try {
-    const startResponse = await fetch("https://api.replicate.com/v1/predictions", {
+    // STEP 1: Generate the story via OpenAI
+    const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Token ${token}`,
         "Content-Type": "application/json",
+        Authorization: `Bearer ${openaiApiKey}`,
       },
       body: JSON.stringify({
-        version: "stability-ai/sdxl:5e13360e0cfb4ed6b5ef71d73c4ed6a61f23615271edc53077f26c1a3f69b2c0",
-        input: {
-          prompt: prompt,
-          width: 1024,
-          height: 1024,
-        },
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: "You are a children's book author. Write a whimsical, child-friendly story in British English. Divide the story into the specified number of pages. Each page should be described vividly for illustration but use simple language for young readers. Keep the character descriptions consistent with the inputs. Return the output in JSON format with a structure like: [{ page: 1, text: '...', prompt: '...' }, ...]",
+          },
+          {
+            role: "user",
+            content: `Story title: ${storyInputs.title}\nLocation: ${storyInputs.location}\nPlot: ${storyInputs.plot}\nReading level: ${storyInputs.readingLevel}\nCharacters: ${characters.map((c) => `${c.name}, age ${c.age}, appearance: ${c.appearance}, personality: ${c.personality}`).join(" | ")}\nPages: ${pageCount}`,
+          },
+        ],
+        temperature: 0.8,
       }),
     });
 
-    const prediction = await startResponse.json();
-    console.log("FULL REPLICATE RESPONSE:", prediction);
+    const storyData = await openaiRes.json();
+    const pages = storyData.choices?.[0]?.message?.content;
 
-    if (!prediction?.urls?.get) {
-      return res.status(500).json({
-        error: "Invalid response from Replicate (no URLs)",
-        raw: prediction,
-      });
+    if (!pages) {
+      throw new Error("Story generation failed");
     }
 
-    // Poll the prediction URL until it's done
-    for (let i = 0; i < 15; i++) {
-      const poll = await fetch(prediction.urls.get, {
-        headers: { Authorization: `Token ${token}` },
-      });
+    const parsedPages = JSON.parse(pages);
 
-      const result = await poll.json();
+    // STEP 2: Generate images for each page using Stability AI
+    const stabilityResponses = await Promise.all(
+      parsedPages.map(async (page) => {
+        const response = await fetch("https://api.stability.ai/v1/generation/sdxl-1.0/text-to-image", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            Authorization: `Bearer ${stabilityApiKey}`,
+          },
+          body: JSON.stringify({
+            text_prompts: [
+              {
+                text: page.prompt,
+              },
+            ],
+            cfg_scale: 7,
+            height: 1024,
+            width: 1024,
+            samples: 1,
+            steps: 30,
+          }),
+        });
 
-      if (result.status === "succeeded") {
-        return res.status(200).json({ imageUrl: result.output[0] });
-      }
+        const result = await response.json();
 
-      if (result.status === "failed") {
-        return res.status(500).json({ error: "Generation failed" });
-      }
+        return {
+          page: page.page,
+          text: page.text,
+          image: result.artifacts?.[0]?.url || null,
+        };
+      })
+    );
 
-      // Wait 2 seconds before next poll
-      await new Promise((r) => setTimeout(r, 2000));
-    }
-
-    return res.status(500).json({ error: "Timed out waiting for image" });
+    return NextResponse.json({ pages: stabilityResponses });
   } catch (err) {
-    console.error("GENERATION ERROR:", err);
-    return res.status(500).json({ error: "Internal error", detail: err.message });
+    console.error("Page generation error:", err);
+    return NextResponse.json({ error: "Page generation failed" }, { status: 500 });
   }
 }
