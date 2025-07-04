@@ -4,19 +4,17 @@ export default async function handler(req, res) {
   }
 
   const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
-
   if (!REPLICATE_API_TOKEN) {
     return res.status(500).json({ error: "Missing Replicate API token" });
   }
 
   const { storyTitle, characterName, characterAge, hairColor, eyeColor, personality, location, plot } = req.body;
 
-  const prompt = `Children's book cover. Square layout, colourful and whimsical illustration. 
-Cartoon of a child named ${characterName}, age ${characterAge}, with ${hairColor} hair and ${eyeColor} eyes, described as ${personality}, smiling outside a place in ${location}. 
-Story theme: "${storyTitle}". Scene hint: ${plot}.`;
+  const prompt = `Children's book cover. Square 210mm x 210mm layout. Colourful cartoon illustration of a child named ${characterName}, age ${characterAge}, with ${hairColor} hair and ${eyeColor} eyes, described as ${personality}, standing outside a landmark in ${location}. Book title: "${storyTitle}". Background includes animals or setting related to: ${plot}.`;
 
   try {
-    const response = await fetch("https://api.replicate.com/v1/predictions", {
+    // Step 1: Start prediction
+    const startResponse = await fetch("https://api.replicate.com/v1/predictions", {
       method: "POST",
       headers: {
         "Authorization": `Token ${REPLICATE_API_TOKEN}`,
@@ -32,33 +30,44 @@ Story theme: "${storyTitle}". Scene hint: ${plot}.`;
       })
     });
 
-    const data = await response.json();
+    const prediction = await startResponse.json();
 
-    if (data?.urls?.get) {
-      // Poll the prediction endpoint until it's done
-      let predictionResult;
-      while (!predictionResult || predictionResult.status !== "succeeded") {
-        const result = await fetch(data.urls.get, {
-          headers: {
-            "Authorization": `Token ${REPLICATE_API_TOKEN}`
-          }
-        });
-        predictionResult = await result.json();
-        if (predictionResult.status === "failed") {
-          throw new Error("Image generation failed.");
+    if (!prediction?.urls?.get) {
+      throw new Error("Replicate did not return a valid prediction URL.");
+    }
+
+    // Step 2: Poll for image
+    let imageReady = false;
+    let finalImageUrl = null;
+
+    for (let i = 0; i < 20; i++) {
+      const pollResponse = await fetch(prediction.urls.get, {
+        headers: {
+          "Authorization": `Token ${REPLICATE_API_TOKEN}`
         }
-        if (predictionResult.status !== "succeeded") {
-          await new Promise((r) => setTimeout(r, 1500)); // Wait and retry
-        }
+      });
+
+      const pollResult = await pollResponse.json();
+
+      if (pollResult.status === "succeeded" && pollResult.output?.[0]) {
+        finalImageUrl = pollResult.output[0];
+        imageReady = true;
+        break;
+      } else if (pollResult.status === "failed") {
+        throw new Error("Image generation failed.");
       }
 
-      const imageUrl = predictionResult.output?.[0];
-      return res.status(200).json({ imageUrl });
-    } else {
-      return res.status(500).json({ error: "Image generation failed." });
+      await new Promise((r) => setTimeout(r, 2000)); // Wait 2 seconds before next poll
     }
+
+    if (!imageReady) {
+      throw new Error("Image was not ready in time.");
+    }
+
+    return res.status(200).json({ imageUrl: finalImageUrl });
+
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Error generating image." });
+    console.error("Image generation error:", err);
+    return res.status(500).json({ error: "Failed to generate cover image." });
   }
 }
